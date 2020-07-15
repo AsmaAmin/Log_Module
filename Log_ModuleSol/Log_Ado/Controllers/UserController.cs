@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Mail;
 using System.Web;
 using System.Web.Mvc;
+using System.Web.Security;
 using Log_Ado.Models;
 
 namespace Log_Ado.Controllers
@@ -71,8 +72,8 @@ namespace Log_Ado.Controllers
             return View(user);
         }
         // verify Email
-          [HttpGet]
-          public ActionResult VerifyAccount (string id)
+        [HttpGet]
+        public ActionResult VerifyAccount(string id)
         {
             bool status = false;
             using (Log_ModuledbEntities dc = new Log_ModuledbEntities())
@@ -81,7 +82,7 @@ namespace Log_Ado.Controllers
 
                 var v = dc.Users.Where(a => a.ActivationCode == new Guid(id)).FirstOrDefault();
 
-                if(v!= null)
+                if (v != null)
                 {
                     v.IsEmailVarified = true;
                     dc.SaveChanges();
@@ -96,9 +97,61 @@ namespace Log_Ado.Controllers
                 return View();
             }
         }
-        //Login
+      //Login
+      [HttpGet]
+      public ActionResult Login()
+        {
+            return View();
+        }
         // Login POST
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult Login(UserLogin login, string ReturnUrl="")
+        {
+            string message = "";
+            using(Log_ModuledbEntities dc = new Log_ModuledbEntities())
+            {
+                var v = dc.Users.Where(a => a.EmailId == login.EmailId).FirstOrDefault();
+                if (v != null)
+                {
+                    if (string.Compare(Crypto.Hash(login.Password), v.Password) == 0)
+                    {
+                        int timeout = login.Rememberme ? 525600 : 20; // 525600 min = 1year;
+                        var ticket = new FormsAuthenticationTicket(login.EmailId, login.Rememberme, timeout);
+                        string encrypted = FormsAuthentication.Encrypt(ticket);
+                        var cookis = new HttpCookie(FormsAuthentication.FormsCookieName, encrypted);
+                        cookis.Expires = DateTime.Now.AddMinutes(timeout);
+                        cookis.HttpOnly = true;
+                        Response.Cookies.Add(cookis);
+
+
+                        if (Url.IsLocalUrl(ReturnUrl))
+                        {
+                            return Redirect(ReturnUrl);
+                        }
+                        else
+                        {
+                            return RedirectToAction("Index, Home");
+                        }
+                    }
+
+                    else
+                    {
+                        message = "Invalid credential Provided.";
+                    }
+                }
+            }
+                return View();
+        }
         //Logout
+
+        [HttpPost]
+        [Authorize]
+        public ActionResult Logout()
+        {
+            FormsAuthentication.SignOut();
+            return RedirectToAction("Login", "User");
+        }
         [NonAction]
         public bool IsEmailExist(string emailId)
         {
